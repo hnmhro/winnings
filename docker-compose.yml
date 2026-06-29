@@ -1,0 +1,183 @@
+services:
+
+  # ── Infrastruktur ──────────────────────────────────────────────
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: winnings-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-winnings}
+      POSTGRES_USER: ${POSTGRES_USER:-winnings}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./infrastructure/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-winnings}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - winnings-net
+
+  redis:
+    image: redis:7-alpine
+    container_name: winnings-redis
+    restart: unless-stopped
+    command: redis-server /usr/local/etc/redis/redis.conf
+    volumes:
+      - redis_data:/data
+      - ./infrastructure/redis/redis.conf:/usr/local/etc/redis/redis.conf:ro
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - winnings-net
+
+  # ── Services ───────────────────────────────────────────────────
+
+  scraper:
+    build:
+      context: ./services/scraper
+      dockerfile: Dockerfile
+    container_name: winnings-scraper
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/scraper/src:/app/src
+      - scraper_data:/app/data
+    networks:
+      - winnings-net
+
+  participant:
+    build:
+      context: ./services/participant
+      dockerfile: Dockerfile
+    container_name: winnings-participant
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/participant/src:/app/src
+      - participant_screenshots:/app/screenshots
+    # Playwright braucht erweiterte Rechte für den Browser
+    security_opt:
+      - seccomp:unconfined
+    networks:
+      - winnings-net
+
+  email-manager:
+    build:
+      context: ./services/email-manager
+      dockerfile: Dockerfile
+    container_name: winnings-email
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/email-manager/src:/app/src
+    networks:
+      - winnings-net
+
+  notifier:
+    build:
+      context: ./services/notifier
+      dockerfile: Dockerfile
+    container_name: winnings-notifier
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/notifier/src:/app/src
+    networks:
+      - winnings-net
+
+  scheduler:
+    build:
+      context: ./services/scheduler
+      dockerfile: Dockerfile
+    container_name: winnings-scheduler
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/scheduler/src:/app/src
+    networks:
+      - winnings-net
+
+  dashboard-backend:
+    build:
+      context: ./services/dashboard/backend
+      dockerfile: Dockerfile
+    container_name: winnings-api
+    restart: unless-stopped
+    env_file: .env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./services/dashboard/backend/src:/app/src
+      - participant_screenshots:/app/screenshots:ro
+    networks:
+      - winnings-net
+
+  dashboard-frontend:
+    build:
+      context: ./services/dashboard/frontend
+      dockerfile: Dockerfile
+    container_name: winnings-frontend
+    restart: unless-stopped
+    environment:
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost/api}
+    depends_on:
+      - dashboard-backend
+    networks:
+      - winnings-net
+
+  nginx:
+    image: nginx:alpine
+    container_name: winnings-nginx
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-8080}:80"
+    volumes:
+      - ./infrastructure/nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - dashboard-backend
+      - dashboard-frontend
+    networks:
+      - winnings-net
+
+volumes:
+  postgres_data:
+  redis_data:
+  scraper_data:
+  participant_screenshots:
+
+networks:
+  winnings-net:
+    driver: bridge
