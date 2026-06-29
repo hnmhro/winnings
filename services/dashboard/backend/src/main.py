@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import asyncpg
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import RedirectResponse
 
 DATABASE_URL = os.environ.get("DATABASE_URL", "")
 
@@ -24,6 +25,11 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.get("/", include_in_schema=False)
+async def root():
+    return RedirectResponse(url="/docs")
 
 
 @app.get("/health")
