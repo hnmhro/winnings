@@ -27,22 +27,111 @@ GOOGLE_NEWS_QUERIES = [
     "gewinnspiel mitmachen 2026",
     "verlosung gewinnen kostenlos",
     "preisausschreiben teilnehmen",
+    "gewinnspiel sofort teilnehmen",
+    "jetzt gewinnen anmelden kostenlos",
+    "verlosung kostenlos mitmachen",
+    "preisausschreiben 2026 Deutschland",
+]
+
+# Reddit RSS – kostenlos, kein API-Key
+REDDIT_FEEDS = [
+    "https://www.reddit.com/r/Gewinnspiele/.rss",
+    "https://www.reddit.com/r/de+Germany+Gewinnspiel/search.rss?q=gewinnspiel&sort=new",
 ]
 
 SOURCES = [
+    # Portale
     {
         "name": "Lottobay.de",
         "type": "portal",
         "url": "https://www.lottobay.de/gewinnspiele/",
-        "link_selector": "h2 a, h3 a, .entry-title a, article a[href*='gewinn']",
-        "title_selector": None,
+        "link_selector": "h2 a, h3 a, .entry-title a, article a",
     },
     {
         "name": "Gewinnarena.de",
         "type": "portal",
         "url": "https://www.gewinnarena.de/",
-        "link_selector": "h2 a, h3 a, .contest-title a, .gewinnspiel a",
-        "title_selector": None,
+        "link_selector": "h2 a, h3 a, .contest-title a, article a",
+    },
+    # Supermärkte & Einzelhandel
+    {
+        "name": "REWE Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.rewe.de/gewinnspiele/",
+        "link_selector": "a[href*='gewinn'], .teaser a, article a, h2 a, h3 a",
+    },
+    {
+        "name": "Kaufland Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.kaufland.de/content/service/gewinnspiele/",
+        "link_selector": "a[href*='gewinn'], .product-card a, article a, h2 a",
+    },
+    {
+        "name": "Lidl Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.lidl.de/aktionen/gewinnspiele",
+        "link_selector": "a[href*='gewinn'], .offer-item a, article a, h2 a",
+    },
+    {
+        "name": "EDEKA Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.edeka.de/aktionen/gewinnspiele/",
+        "link_selector": "a[href*='gewinn'], .teaser a, article a, h2 a",
+    },
+    {
+        "name": "DM Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.dm.de/gewinnspiele/",
+        "link_selector": "a[href*='gewinn'], .tile a, article a, h2 a",
+    },
+    {
+        "name": "Rossmann Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.rossmann.de/de/gewinnspiele/",
+        "link_selector": "a[href*='gewinn'], .product a, article a, h2 a",
+    },
+    # Medien & Zeitschriften
+    {
+        "name": "Brigitte Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.brigitte.de/gewinnspiele/",
+        "link_selector": "h2 a, h3 a, .teaser__headline a, article a",
+    },
+    {
+        "name": "Chefkoch Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.chefkoch.de/gewinnspiele/",
+        "link_selector": "h2 a, h3 a, .ds-teaser-link, article a",
+    },
+    {
+        "name": "RTL Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.rtl.de/gewinnspiele/",
+        "link_selector": "h2 a, h3 a, .teaser a, article a",
+    },
+    {
+        "name": "Stern Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.stern.de/leben/freizeit/gewinnspiele/",
+        "link_selector": "h2 a, h3 a, .article-teaser a, article a",
+    },
+    {
+        "name": "Focus Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.focus.de/gewinnspiele/",
+        "link_selector": "h2 a, h3 a, .teaser a, article a",
+    },
+    {
+        "name": "ProSieben Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.prosieben.de/gewinnspiele/",
+        "link_selector": "h2 a, h3 a, .teaser a, article a, .content-card a",
+    },
+    {
+        "name": "Cosmopolitan Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.cosmopolitan.de/gewinnspiele/",
+        "link_selector": "h2 a, h3 a, .listicle a, article a",
     },
 ]
 
@@ -142,9 +231,20 @@ async def run_scrape_cycle(redis: aioredis.Redis, db: asyncpg.Connection) -> int
             results = await scrape_google_news(query)
             logger.info("  -> %d Treffer", len(results))
             for r in results:
-                all_candidates.append((r["url"], r.get("title", ""), f"Google News: {query}"))
+                all_candidates.append((r["url"], r.get("title", ""), f"Google News"))
         except Exception as exc:
             logger.error("Google News Fehler '%s': %s", query, exc)
+
+    # Reddit RSS
+    for feed_url in REDDIT_FEEDS:
+        logger.info("Reddit RSS: %s", feed_url)
+        try:
+            results = await scrape_rss_feed(feed_url)
+            logger.info("  -> %d Einträge", len(results))
+            for r in results:
+                all_candidates.append((r["url"], r.get("title", ""), "Reddit"))
+        except Exception as exc:
+            logger.error("Reddit Fehler: %s", exc)
 
     # Portal-Quellen
     for source in SOURCES:
@@ -152,7 +252,7 @@ async def run_scrape_cycle(redis: aioredis.Redis, db: asyncpg.Connection) -> int
         try:
             candidates = await scrape_portal(
                 source["url"],
-                source.get("link_selector", "a"),
+                source.get("link_selector", "h2 a, h3 a, article a"),
                 source.get("title_selector"),
             )
             logger.info("  -> %d Kandidaten", len(candidates))
