@@ -196,13 +196,17 @@ async def process_candidate(
         logger.debug("Kein Gewinnspiel: %s", url)
         return
 
-    trust = float(result.get("trust_score", 0.0))
-    if trust < MIN_TRUST:
-        logger.info("Übersprungen (trust=%.2f): %s", trust, url)
+    if not result.get("is_active", True):
+        logger.info("Abgelaufen/beendet (%s): %s", result.get("skip_reason", "inaktiv"), url)
         return
 
     if result.get("skip_reason"):
         logger.info("Übersprungen (%s): %s", result["skip_reason"], url)
+        return
+
+    trust = float(result.get("trust_score", 0.0))
+    if trust < MIN_TRUST:
+        logger.info("Übersprungen (trust=%.2f): %s", trust, url)
         return
 
     contest_data = {"url": url, "title": title, "source": source, **result}
