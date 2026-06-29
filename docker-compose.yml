@@ -47,7 +47,8 @@ services:
       dockerfile: Dockerfile
     container_name: winnings-scraper
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
@@ -65,7 +66,8 @@ services:
       dockerfile: Dockerfile
     container_name: winnings-participant
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
@@ -85,7 +87,8 @@ services:
       dockerfile: Dockerfile
     container_name: winnings-email
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
@@ -102,7 +105,8 @@ services:
       dockerfile: Dockerfile
     container_name: winnings-notifier
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - .env
     depends_on:
       redis:
         condition: service_healthy
@@ -117,7 +121,8 @@ services:
       dockerfile: Dockerfile
     container_name: winnings-scheduler
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
@@ -134,7 +139,8 @@ services:
       dockerfile: Dockerfile
     container_name: winnings-api
     restart: unless-stopped
-    env_file: .env
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
