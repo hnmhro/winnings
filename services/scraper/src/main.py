@@ -92,13 +92,30 @@ HEADERS = {
 }
 
 
+async def resolve_url(url: str) -> str:
+    """Löst Redirect-URLs auf (z.B. Google News → echter Artikel)."""
+    try:
+        async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True, timeout=10) as client:
+            resp = await client.head(url)
+            final = str(resp.url)
+            return final if final != url else url
+    except Exception:
+        return url
+
+
 async def fetch_page_content(url: str) -> str:
-    async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True, timeout=20) as client:
-        resp = await client.get(url)
-        soup = BeautifulSoup(resp.text, "html.parser")
-        for tag in soup(["script", "style", "nav", "footer", "header"]):
-            tag.decompose()
-        return soup.get_text(separator=" ", strip=True)[:4000]
+    """Holt lesbaren Text von einer URL. Gibt '' zurück bei Fehler."""
+    try:
+        async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True, timeout=20) as client:
+            resp = await client.get(url)
+            if resp.status_code != 200:
+                return ""
+            soup = BeautifulSoup(resp.text, "html.parser")
+            for tag in soup(["script", "style", "nav", "footer", "header"]):
+                tag.decompose()
+            return soup.get_text(separator=" ", strip=True)[:4000]
+    except Exception:
+        return ""
 
 
 async def save_contest_to_db(db: asyncpg.Connection, data: dict) -> bool:
@@ -134,14 +151,25 @@ async def process_candidate(
     if already:
         return
     await redis.sadd("seen:urls", url)
-    logger.info("Analysiere: %s", title or url)
+
+    # Google News Redirect-URLs auflösen → echte Artikel-URL
+    real_url = url
+    if "news.google.com" in url:
+        real_url = await resolve_url(url)
+        if real_url != url:
+            logger.debug("Aufgelöst: %s", real_url)
+
+    logger.info("Analysiere: %s", title or real_url)
 
     try:
-        content = await fetch_page_content(url)
-        result = await analyze_contest(url, title, content)
+        content = await fetch_page_content(real_url)
+        result = await analyze_contest(real_url, title, content)
     except Exception as exc:
-        logger.warning("Analyse fehlgeschlagen für %s: %s", url, exc)
+        logger.warning("Analyse fehlgeschlagen für %s: %s", real_url, exc)
         return
+
+    # Echte URL in den Daten verwenden
+    url = real_url
 
     if not result.get("is_contest"):
         logger.debug("Kein Gewinnspiel: %s", url)
