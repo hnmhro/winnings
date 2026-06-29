@@ -35,17 +35,20 @@ PROFILE = {
 
 
 async def save_contest(db: asyncpg.Connection, data: dict) -> str | None:
+    """Gibt contest_id zurück wenn Teilnahme sinnvoll, None wenn bereits erledigt."""
     row = await db.fetchrow(
         """
         INSERT INTO contests (url, title, source, prize_description, estimated_value,
                               participation_type, trust_score, requirements, status)
         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'queued')
-        ON CONFLICT (url) DO NOTHING
+        ON CONFLICT (url) DO UPDATE
+            SET status = 'queued'
+            WHERE contests.status = 'found'
         RETURNING id::text
         """,
         data["url"], data.get("title"), data.get("source"),
         data.get("prize_description"), data.get("estimated_value"),
-        data.get("participation_type", "unknown"), data.get("trust_score", 0),
+        data.get("participation_type", "unknown"), float(data.get("trust_score", 0)),
         json.dumps(data.get("requirements", [])),
     )
     return row["id"] if row else None

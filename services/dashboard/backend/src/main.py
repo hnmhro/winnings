@@ -106,6 +106,24 @@ async def list_wins():
 
 # Interne Trigger-Endpoints
 
+@app.post("/internal/participate")
+async def trigger_participate():
+    """Schiebt alle gefundenen Gewinnspiele (status=found) in die Teilnahme-Queue."""
+    pool = app.state.db
+    redis = app.state.redis
+    rows = await pool.fetch(
+        "SELECT url, title, source, prize_description, estimated_value, "
+        "participation_type, trust_score, requirements "
+        "FROM contests WHERE status = 'found'"
+    )
+    import json as _json
+    queued = 0
+    for r in rows:
+        await redis.rpush("queue:contest:found", _json.dumps(dict(r)))
+        queued += 1
+    return {"queued": queued, "message": f"{queued} Gewinnspiele in Queue gestellt"}
+
+
 @app.post("/internal/scrape")
 async def trigger_scrape():
     """Weckt den Scraper-Service sofort per Redis-Signal auf."""

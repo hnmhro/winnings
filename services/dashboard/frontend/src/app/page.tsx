@@ -131,6 +131,7 @@ export default function Dashboard() {
         </div>
         <div className="flex gap-3 flex-wrap">
           <ActionButton label="Jetzt suchen" endpoint="/internal/scrape" />
+          <ActionButton label="Teilnehmen starten" endpoint="/internal/participate" color="green" onDone={() => load()} />
           <ActionButton label="E-Mail prüfen" endpoint="/internal/check-email" color="green" />
           <ActionButton
             label="Abgelaufene löschen"
