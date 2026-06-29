@@ -105,9 +105,13 @@ async def main() -> None:
     db = await asyncpg.connect(DATABASE_URL)
     logger.info("Email Manager gestartet. Prüfe alle %ds.", CHECK_INTERVAL)
 
+    await check_inbox(redis, db)
+
     while True:
+        triggered = await redis.blpop("trigger:email", timeout=CHECK_INTERVAL)
+        if triggered:
+            logger.info("Manueller Trigger empfangen!")
         await check_inbox(redis, db)
-        await asyncio.sleep(CHECK_INTERVAL)
 
 
 if __name__ == "__main__":
