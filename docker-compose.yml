@@ -141,8 +141,6 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-    ports:
-      - "${DASHBOARD_PORT:-8080}:8000"
     depends_on:
       postgres:
         condition: service_healthy
@@ -154,7 +152,20 @@ services:
     networks:
       - winnings-net
 
-  # dashboard-frontend und nginx folgen in Phase 2
+  dashboard-frontend:
+    build:
+      context: ./services/dashboard/frontend
+      dockerfile: Dockerfile
+    container_name: winnings-frontend
+    restart: unless-stopped
+    ports:
+      - "${DASHBOARD_PORT:-8080}:3000"
+    environment:
+      API_URL: http://dashboard-backend:8000
+    depends_on:
+      - dashboard-backend
+    networks:
+      - winnings-net
 
 volumes:
   postgres_data:
