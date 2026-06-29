@@ -46,29 +46,41 @@ function StatCard({ label, value, color }: { label: string; value: number; color
 function ActionButton({
   label,
   endpoint,
+  method = 'POST',
   color = 'blue',
+  confirm,
+  onDone,
 }: {
   label: string
   endpoint: string
-  color?: 'blue' | 'green'
+  method?: 'POST' | 'DELETE'
+  color?: 'blue' | 'green' | 'red'
+  confirm?: string
+  onDone?: (result: Record<string, unknown>) => void
 }) {
   const [state, setState] = useState<'idle' | 'loading' | 'done'>('idle')
+  const [info, setInfo] = useState('')
 
   const trigger = async () => {
+    if (confirm && !window.confirm(confirm)) return
     setState('loading')
+    setInfo('')
     try {
-      await fetch(`/api${endpoint}`, { method: 'POST' })
+      const res = await fetch(`/api${endpoint}`, { method })
+      const data = await res.json()
+      if (data.deleted !== undefined) setInfo(`${data.deleted} gelöscht`)
+      onDone?.(data)
       setState('done')
-      setTimeout(() => setState('idle'), 3000)
+      setTimeout(() => { setState('idle'); setInfo('') }, 4000)
     } catch {
       setState('idle')
     }
   }
 
   const base =
-    color === 'green'
-      ? 'bg-green-600 hover:bg-green-700'
-      : 'bg-blue-600 hover:bg-blue-700'
+    color === 'green' ? 'bg-green-600 hover:bg-green-700' :
+    color === 'red'   ? 'bg-red-500 hover:bg-red-600' :
+                        'bg-blue-600 hover:bg-blue-700'
 
   return (
     <button
@@ -76,7 +88,9 @@ function ActionButton({
       disabled={state === 'loading'}
       className={`${base} text-white text-sm font-medium px-4 py-2 rounded-lg transition disabled:opacity-60`}
     >
-      {state === 'loading' ? 'Wird ausgeführt…' : state === 'done' ? 'Gestartet!' : label}
+      {state === 'loading' ? 'Läuft…' :
+       state === 'done'    ? (info || 'Erledigt!') :
+                             label}
     </button>
   )
 }
@@ -115,9 +129,17 @@ export default function Dashboard() {
             <p className="text-xs text-gray-400 mt-1">Zuletzt aktualisiert: {lastUpdate}</p>
           )}
         </div>
-        <div className="flex gap-3">
+        <div className="flex gap-3 flex-wrap">
           <ActionButton label="Jetzt suchen" endpoint="/internal/scrape" />
           <ActionButton label="E-Mail prüfen" endpoint="/internal/check-email" color="green" />
+          <ActionButton
+            label="Abgelaufene löschen"
+            endpoint="/contests/expired"
+            method="DELETE"
+            color="red"
+            confirm="Alle abgelaufenen Gewinnspiele unwiderruflich löschen?"
+            onDone={() => load()}
+          />
         </div>
       </div>
 

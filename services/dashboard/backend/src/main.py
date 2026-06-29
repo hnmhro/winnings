@@ -130,6 +130,26 @@ async def trigger_cleanup():
     return {"triggered": "cleanup"}
 
 
+@app.delete("/contests/expired")
+async def delete_expired_contests():
+    """Löscht alle abgelaufenen Gewinnspiele (Deadline vergangen oder älter als 30 Tage)."""
+    pool = app.state.db
+    result = await pool.fetchval(
+        """
+        WITH deleted AS (
+            DELETE FROM contests
+            WHERE
+                (deadline IS NOT NULL AND deadline < NOW())
+                OR (deadline IS NULL AND found_at < NOW() - INTERVAL '30 days'
+                    AND status IN ('found', 'skipped', 'error', 'done', 'lost'))
+            RETURNING id
+        )
+        SELECT COUNT(*) FROM deleted
+        """
+    )
+    return {"deleted": result}
+
+
 @app.post("/internal/weekly-report")
 async def trigger_report():
     return {"triggered": "weekly-report"}
