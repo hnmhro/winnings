@@ -60,15 +60,19 @@ async def scrape_rss_feed(feed_url: str) -> list[dict]:
         if filtered:
             logger.info("RSS %s: %d Einträge (%d zu alt gefiltert)", feed_url, len(recent), filtered)
 
-        return [
-            {
-                "url": e.get("link", ""),
+        results = []
+        for e in recent:
+            link = e.get("link", "")
+            if not link or not link.startswith("http"):
+                continue
+            # Bei Google News: echte Artikel-URL aus source-Tag bevorzugen
+            source_url = getattr(getattr(e, "source", None), "href", None)
+            results.append({
+                "url": source_url if source_url and "google.com" not in source_url else link,
                 "title": e.get("title", ""),
                 "published": _parse_published(e).isoformat() if _parse_published(e) else None,
-            }
-            for e in recent
-            if e.get("link") and e["link"].startswith("http")
-        ]
+            })
+        return results
 
     except Exception as exc:
         logger.warning("RSS-Fehler %s: %s", feed_url, exc)

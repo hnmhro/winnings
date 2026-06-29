@@ -92,17 +92,6 @@ HEADERS = {
 }
 
 
-async def resolve_url(url: str) -> str:
-    """Löst Redirect-URLs auf (z.B. Google News → echter Artikel)."""
-    try:
-        async with httpx.AsyncClient(headers=HEADERS, follow_redirects=True, timeout=10) as client:
-            resp = await client.head(url)
-            final = str(resp.url)
-            return final if final != url else url
-    except Exception:
-        return url
-
-
 async def fetch_page_content(url: str) -> str:
     """Holt lesbaren Text von einer URL. Gibt '' zurück bei Fehler."""
     try:
@@ -152,24 +141,20 @@ async def process_candidate(
         return
     await redis.sadd("seen:urls", url)
 
-    # Google News Redirect-URLs auflösen → echte Artikel-URL
-    real_url = url
-    if "news.google.com" in url:
-        real_url = await resolve_url(url)
-        if real_url != url:
-            logger.debug("Aufgelöst: %s", real_url)
-
-    logger.info("Analysiere: %s", title or real_url)
+    # Google News URLs: kein Content-Fetch (landet auf consent.google.com)
+    # Analyse nur anhand des Titels aus dem RSS-Feed
+    is_google_news = "news.google.com" in url or "consent.google.com" in url
+    logger.info("Analysiere: %s", title or url)
 
     try:
-        content = await fetch_page_content(real_url)
-        result = await analyze_contest(real_url, title, content)
+        if is_google_news:
+            content = ""
+        else:
+            content = await fetch_page_content(url)
+        result = await analyze_contest(url, title, content)
     except Exception as exc:
-        logger.warning("Analyse fehlgeschlagen für %s: %s", real_url, exc)
+        logger.warning("Analyse fehlgeschlagen für %s: %s", url, exc)
         return
-
-    # Echte URL in den Daten verwenden
-    url = real_url
 
     if not result.get("is_contest"):
         logger.debug("Kein Gewinnspiel: %s", url)
