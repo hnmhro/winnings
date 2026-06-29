@@ -10,7 +10,7 @@ import redis.asyncio as aioredis
 from bs4 import BeautifulSoup
 
 from .analyzer import analyze_contest
-from .sources.portal import scrape_portal, scrape_rss_feed
+from .sources.portal import scrape_google_news, scrape_portal, scrape_rss_feed
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(levelname)s %(message)s")
 logger = logging.getLogger("scraper")
@@ -21,38 +21,28 @@ MIN_TRUST = float(os.getenv("MIN_TRUST_SCORE", "0.6"))
 QUEUE_CONTEST = "queue:contest:found"
 TRIGGER_KEY = "trigger:scrape"
 
+# Google News RSS – zuverlässig, kein API-Key, auf Deutsch gefiltert
+GOOGLE_NEWS_QUERIES = [
+    "gewinnspiel jetzt teilnehmen",
+    "gewinnspiel mitmachen 2026",
+    "verlosung gewinnen kostenlos",
+    "preisausschreiben teilnehmen",
+]
+
 SOURCES = [
     {
-        "name": "Dein-Gewinn.de RSS",
-        "type": "rss",
-        "url": "https://www.dein-gewinn.de/feed/",
-    },
-    {
-        "name": "Gewinnspiele-Aktuell RSS",
-        "type": "rss",
-        "url": "https://www.gewinnspiele-aktuell.de/feed/",
-    },
-    {
-        "name": "Gewinne.de RSS",
-        "type": "rss",
-        "url": "https://www.gewinne.de/feed/",
-    },
-    {
-        "name": "Meingewinnspiel.de RSS",
-        "type": "rss",
-        "url": "https://www.meingewinnspiel.de/feed/",
-    },
-    {
-        "name": "Gewinnspiele.eu Portal",
+        "name": "Lottobay.de",
         "type": "portal",
-        "url": "https://www.gewinnspiele.eu/",
-        "link_selector": "h2.entry-title a, h3.entry-title a, article a",
+        "url": "https://www.lottobay.de/gewinnspiele/",
+        "link_selector": "h2 a, h3 a, .entry-title a, article a[href*='gewinn']",
         "title_selector": None,
     },
     {
-        "name": "Preisraetter.de RSS",
-        "type": "rss",
-        "url": "https://www.preisraetter.de/feed/",
+        "name": "Gewinnarena.de",
+        "type": "portal",
+        "url": "https://www.gewinnarena.de/",
+        "link_selector": "h2 a, h3 a, .contest-title a, .gewinnspiel a",
+        "title_selector": None,
     },
 ]
 
@@ -143,33 +133,49 @@ async def process_candidate(
 
 async def run_scrape_cycle(redis: aioredis.Redis, db: asyncpg.Connection) -> int:
     logger.info("=== Starte Scrape-Zyklus ===")
-    found = 0
-    for source in SOURCES:
-        logger.info("Scrape: %s", source["name"])
+    all_candidates: list[tuple[str, str, str]] = []  # (url, title, source)
+
+    # Google News Suchen
+    for query in GOOGLE_NEWS_QUERIES:
+        logger.info("Google News: '%s'", query)
         try:
-            if source["type"] == "rss":
-                candidates = await scrape_rss_feed(source["url"])
-            else:
-                candidates = await scrape_portal(
-                    source["url"],
-                    source.get("link_selector", "a"),
-                    source.get("title_selector"),
-                )
+            results = await scrape_google_news(query)
+            logger.info("  -> %d Treffer", len(results))
+            for r in results:
+                all_candidates.append((r["url"], r.get("title", ""), f"Google News: {query}"))
         except Exception as exc:
-            logger.error("Fehler bei Quelle %s: %s", source["name"], exc)
-            continue
+            logger.error("Google News Fehler '%s': %s", query, exc)
 
-        logger.info("%d Kandidaten von %s", len(candidates), source["name"])
-        tasks = [
-            process_candidate(redis, db, c["url"], c.get("title", ""), source["name"])
-            for c in candidates
-            if c.get("url") and c["url"].startswith("http")
-        ]
-        await asyncio.gather(*tasks, return_exceptions=True)
-        found += len(tasks)
+    # Portal-Quellen
+    for source in SOURCES:
+        logger.info("Portal: %s", source["name"])
+        try:
+            candidates = await scrape_portal(
+                source["url"],
+                source.get("link_selector", "a"),
+                source.get("title_selector"),
+            )
+            logger.info("  -> %d Kandidaten", len(candidates))
+            for c in candidates:
+                all_candidates.append((c["url"], c.get("title", ""), source["name"]))
+        except Exception as exc:
+            logger.error("Portal Fehler %s: %s", source["name"], exc)
 
-    logger.info("=== Scrape-Zyklus fertig (%d verarbeitet) ===", found)
-    return found
+    # Duplikate entfernen
+    seen_urls: set[str] = set()
+    unique = []
+    for url, title, src in all_candidates:
+        if url and url.startswith("http") and url not in seen_urls:
+            seen_urls.add(url)
+            unique.append((url, title, src))
+
+    logger.info("Gesamt: %d einzigartige Kandidaten zur Analyse", len(unique))
+
+    tasks = [process_candidate(redis, db, url, title, src) for url, title, src in unique]
+    await asyncio.gather(*tasks, return_exceptions=True)
+
+    logger.info("=== Scrape-Zyklus fertig ===")
+    return len(unique)
 
 
 async def main() -> None:
