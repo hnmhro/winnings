@@ -1,6 +1,8 @@
+version: '3.8'
+
 services:
 
-  # ── Infrastruktur ──────────────────────────────────────────────
+  # Infrastruktur
 
   postgres:
     image: postgres:16-alpine
@@ -37,7 +39,7 @@ services:
     networks:
       - winnings-net
 
-  # ── Services ───────────────────────────────────────────────────
+  # Services
 
   scraper:
     build:
@@ -72,7 +74,6 @@ services:
     volumes:
       - ./services/participant/src:/app/src
       - participant_screenshots:/app/screenshots
-    # Playwright braucht erweiterte Rechte für den Browser
     security_opt:
       - seccomp:unconfined
     networks:
