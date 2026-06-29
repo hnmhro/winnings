@@ -40,57 +40,7 @@ REDDIT_FEEDS = [
 ]
 
 SOURCES = [
-    # Portale
-    {
-        "name": "Lottobay.de",
-        "type": "portal",
-        "url": "https://www.lottobay.de/gewinnspiele/",
-        "link_selector": "h2 a, h3 a, .entry-title a, article a",
-    },
-    {
-        "name": "Gewinnarena.de",
-        "type": "portal",
-        "url": "https://www.gewinnarena.de/",
-        "link_selector": "h2 a, h3 a, .contest-title a, article a",
-    },
-    # Supermärkte & Einzelhandel
-    {
-        "name": "REWE Gewinnspiele",
-        "type": "portal",
-        "url": "https://www.rewe.de/gewinnspiele/",
-        "link_selector": "a[href*='gewinn'], .teaser a, article a, h2 a, h3 a",
-    },
-    {
-        "name": "Kaufland Gewinnspiele",
-        "type": "portal",
-        "url": "https://www.kaufland.de/content/service/gewinnspiele/",
-        "link_selector": "a[href*='gewinn'], .product-card a, article a, h2 a",
-    },
-    {
-        "name": "Lidl Gewinnspiele",
-        "type": "portal",
-        "url": "https://www.lidl.de/aktionen/gewinnspiele",
-        "link_selector": "a[href*='gewinn'], .offer-item a, article a, h2 a",
-    },
-    {
-        "name": "EDEKA Gewinnspiele",
-        "type": "portal",
-        "url": "https://www.edeka.de/aktionen/gewinnspiele/",
-        "link_selector": "a[href*='gewinn'], .teaser a, article a, h2 a",
-    },
-    {
-        "name": "DM Gewinnspiele",
-        "type": "portal",
-        "url": "https://www.dm.de/gewinnspiele/",
-        "link_selector": "a[href*='gewinn'], .tile a, article a, h2 a",
-    },
-    {
-        "name": "Rossmann Gewinnspiele",
-        "type": "portal",
-        "url": "https://www.rossmann.de/de/gewinnspiele/",
-        "link_selector": "a[href*='gewinn'], .product a, article a, h2 a",
-    },
-    # Medien & Zeitschriften
+    # Bewährt funktionierende Portale
     {
         "name": "Brigitte Gewinnspiele",
         "type": "portal",
@@ -98,40 +48,41 @@ SOURCES = [
         "link_selector": "h2 a, h3 a, .teaser__headline a, article a",
     },
     {
-        "name": "Chefkoch Gewinnspiele",
+        "name": "InStyle Gewinnspiele",
         "type": "portal",
-        "url": "https://www.chefkoch.de/gewinnspiele/",
-        "link_selector": "h2 a, h3 a, .ds-teaser-link, article a",
+        "url": "https://www.instyle.de/gewinnspiele/",
+        "link_selector": "h2 a, h3 a, article a",
     },
     {
-        "name": "RTL Gewinnspiele",
+        "name": "Elle Gewinnspiele",
         "type": "portal",
-        "url": "https://www.rtl.de/gewinnspiele/",
+        "url": "https://www.elle.de/gewinnspiele/",
+        "link_selector": "h2 a, h3 a, article a",
+    },
+    {
+        "name": "T-Online Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.t-online.de/ratgeber/freizeit/gewinnspiele/",
         "link_selector": "h2 a, h3 a, .teaser a, article a",
     },
     {
-        "name": "Stern Gewinnspiele",
+        "name": "Bunte Gewinnspiele",
         "type": "portal",
-        "url": "https://www.stern.de/leben/freizeit/gewinnspiele/",
-        "link_selector": "h2 a, h3 a, .article-teaser a, article a",
+        "url": "https://www.bunte.de/gewinnspiele/",
+        "link_selector": "h2 a, h3 a, article a",
+    },
+    # WordPress-basierte Gewinnspiel-Blogs (statisches HTML, gut scrapebar)
+    {
+        "name": "Lottobay Gewinnspiele",
+        "type": "portal",
+        "url": "https://www.lottobay.de/gewinnspiele/",
+        "link_selector": ".entry-title a, h2 a, h3 a",
     },
     {
-        "name": "Focus Gewinnspiele",
+        "name": "Gewinnarena.de",
         "type": "portal",
-        "url": "https://www.focus.de/gewinnspiele/",
-        "link_selector": "h2 a, h3 a, .teaser a, article a",
-    },
-    {
-        "name": "ProSieben Gewinnspiele",
-        "type": "portal",
-        "url": "https://www.prosieben.de/gewinnspiele/",
-        "link_selector": "h2 a, h3 a, .teaser a, article a, .content-card a",
-    },
-    {
-        "name": "Cosmopolitan Gewinnspiele",
-        "type": "portal",
-        "url": "https://www.cosmopolitan.de/gewinnspiele/",
-        "link_selector": "h2 a, h3 a, .listicle a, article a",
+        "url": "https://www.gewinnarena.de/",
+        "link_selector": ".entry-title a, h2 a, h3 a, article a",
     },
 ]
 
@@ -297,7 +248,9 @@ async def main() -> None:
         logger.info("Warte auf Trigger oder %dh-Intervall...", interval // 3600)
         triggered = await redis.blpop(TRIGGER_KEY, timeout=interval)
         if triggered:
-            logger.info("Manueller Trigger empfangen!")
+            logger.info("Manueller Trigger empfangen! Setze URL-Cache zurück.")
+            # Cache zurücksetzen damit manuelle Suche auch bekannte URLs neu prüft
+            await redis.delete("seen:urls")
         await run_scrape_cycle(redis, db)
 
 
